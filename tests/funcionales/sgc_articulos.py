@@ -275,6 +275,19 @@ def crear_datos_previos(driver):
     return datos
 
 
+def datos_siguen_en_el_sistema(driver, datos):
+    """Revisa que la cuenta y el artículo de María Fernanda sigan existiendo.
+    Si la base de datos de pruebas se reinició (por ejemplo, con un nuevo despliegue en Render),
+    ya no existen y hay que crearlos otra vez."""
+    try:
+        cambiar_usuario(driver, datos['autora2']['correo'])
+        clic_en_panel(driver, 'Mis artículos')
+        esperar_listado(driver)
+        return fila_de_articulo(driver, datos['titulos']['bd']) is not None
+    except Exception:
+        return False
+
+
 # Se guardan aquí para no crearlos otra vez en el mismo pytest (HU-009, HU-010 y HU-032 los comparten)
 _datos_de_esta_corrida = None
 
@@ -282,19 +295,13 @@ _datos_de_esta_corrida = None
 @pytest.fixture(scope='session')
 def datos_previos():
     """Devuelve los artículos y cuentas de prueba.
-    Si ya existe datos_generados.json del mismo entorno, lo reutiliza (los artículos no se borran).
-    Para crear datos nuevos: $env:SGC_NUEVOS_DATOS="1" en PowerShell."""
+    Si existe datos_generados.json del mismo entorno y esos datos siguen en el sistema, los reutiliza.
+    Si no (o si se pide con $env:SGC_NUEVOS_DATOS="1"), los crea de nuevo."""
     global _datos_de_esta_corrida
     if _datos_de_esta_corrida:
         return _datos_de_esta_corrida
-    if ARCHIVO_DATOS.exists() and os.getenv('SGC_NUEVOS_DATOS') != '1':
-        with open(ARCHIVO_DATOS, encoding='utf-8') as archivo:
-            datos = json.load(archivo)
-        if datos.get('base') == BASE:
-            _datos_de_esta_corrida = datos
-            return datos
 
-    # Navegador propio solo para preparar los datos
+    # Navegador propio solo para revisar o preparar los datos
     from conftest import service  # el mismo chromedriver que usa conftest.py
     from selenium import webdriver
     opciones = webdriver.ChromeOptions()
@@ -306,6 +313,13 @@ def datos_previos():
         opciones.add_argument('--disable-dev-shm-usage')
     driver = webdriver.Chrome(service=service, options=opciones)
     try:
+        if ARCHIVO_DATOS.exists() and os.getenv('SGC_NUEVOS_DATOS') != '1':
+            with open(ARCHIVO_DATOS, encoding='utf-8') as archivo:
+                datos = json.load(archivo)
+            if datos.get('base') == BASE and datos_siguen_en_el_sistema(driver, datos):
+                _datos_de_esta_corrida = datos
+                return datos
+            print('Los datos de datos_generados.json ya no están en el sistema: se crean otra vez.')
         _datos_de_esta_corrida = crear_datos_previos(driver)
         return _datos_de_esta_corrida
     finally:

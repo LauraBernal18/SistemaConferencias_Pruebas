@@ -1,13 +1,15 @@
 # HU-010 · Filtrar artículos · casos del diseño HU010-CP01 a CP09 (+ CP-009 de la matriz)
 # Cuenta: comite@pruebas.co → «Consultar artículos». Datos previos: fixture datos_previos.
 
+import os
+
 import pytest
 from selenium.webdriver.common.by import By
 
-from sgc_helpers import body
+from sgc_helpers import body, login
 # datos_previos es un fixture: se importa para que pytest lo encuentre (por eso no se usa directamente)
-from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, datos_previos, elegir_opcion,
-                           esperar_listado, filtrar, textos_de_opciones, visibles)
+from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, clic_en_panel, datos_previos, elegir_opcion,
+                           esperar_listado, fila_de_articulo, filtrar, ir_a_ruta, textos_de_opciones, visibles)
 
 
 def test_hu010_cp01_filtros_disponibles(navegador, evidencia, datos_previos):
@@ -83,9 +85,18 @@ def test_hu010_cp07_limpiar_filtros(navegador, evidencia, datos_previos):
     evidencia('EXITO')
 
 
-@pytest.mark.skip(reason='HU010-CP08 (matriz CP-007): la pantalla «Mis artículos» del autor no tiene filtros.')
-def test_hu010_cp08_autor_sin_filtros():
-    pass
+def test_hu010_cp08_autor_solo_sus_articulos(navegador, evidencia, datos_previos):
+    """Matriz CP-007. El autor no puede usar el listado con filtros del comité (vuelve a su panel)
+    y en «Mis artículos» solo ve los suyos, así que ningún filtro le puede mostrar artículos ajenos."""
+    login(navegador, 'autor')
+    ir_a_ruta(navegador, '/gestion/articulos')
+    assert navegador.current_url.endswith('/autor'), navegador.current_url
+    assert not navegador.find_elements(By.ID, 'filtro-linea')
+    clic_en_panel(navegador, 'Mis artículos')
+    esperar_listado(navegador)
+    v = visibles(navegador, datos_previos['titulos'])
+    assert v == {'ing1': True, 'ing2': True, 'ia': True, 'bd': False}, v
+    evidencia('EXITO')
 
 
 def test_hu010_cp09_comite_inteligencia_artificial(navegador, evidencia, datos_previos):
@@ -97,7 +108,20 @@ def test_hu010_cp09_comite_inteligencia_artificial(navegador, evidencia, datos_p
     evidencia('EXITO')
 
 
-@pytest.mark.skip(reason='Matriz HU010-CP-009: no hay pantalla para deshabilitar un artículo; '
-                         'requiere que desarrollo lo haga en la base de datos.')
-def test_hu010_articulos_habilitados():
-    pass
+# Desde la pantalla no se puede deshabilitar un artículo. Para esta prueba alguien con acceso
+# a la base de datos (Dana) pone habilitado = False a un artículo de prueba y se pasa su título:
+#   $env:SGC_ARTICULO_DESHABILITADO="QA HU008 <ID> – Asociación con el autor"
+# Sin esa variable, la prueba queda como SKIPPED (Bloqueado).
+@pytest.mark.skipif(not os.getenv('SGC_ARTICULO_DESHABILITADO'),
+                    reason='Matriz HU010-CP-009: falta deshabilitar un artículo en la base de datos '
+                           '(no hay pantalla para hacerlo) y poner su título en SGC_ARTICULO_DESHABILITADO.')
+def test_hu010_articulos_habilitados(navegador, evidencia):
+    """Matriz CP-009 (no está en el diseño). Un artículo deshabilitado no aparece en el listado."""
+    titulo = os.getenv('SGC_ARTICULO_DESHABILITADO')
+    abrir_consulta_comite(navegador)
+    assert fila_de_articulo(navegador, titulo) is None, 'El artículo deshabilitado aparece en el listado'
+    # Aunque se filtre por su línea temática, tampoco debe aparecer
+    elegir_opcion(navegador, 'filtro-linea', 'Ingeniería de software')
+    esperar_listado(navegador)
+    assert fila_de_articulo(navegador, titulo) is None, 'Aparece al filtrar por su línea'
+    evidencia('EXITO')
