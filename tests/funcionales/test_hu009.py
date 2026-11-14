@@ -2,6 +2,8 @@
 # Datos previos: 3 artículos de autor@pruebas.co y 1 de otra autora (fixture datos_previos).
 # Como el entorno es compartido, solo se revisan los artículos de esa preparación.
 
+import os
+
 import pytest
 
 from sgc_helpers import body, login
@@ -86,7 +88,16 @@ def test_hu009_cp08_autor_no_entra_a_gestion(navegador, evidencia, datos_previos
     evidencia('EXITO')
 
 
-@pytest.mark.skip(reason='Matriz HU009-CP-009: no hay pantalla para deshabilitar un artículo; '
-                         'requiere que desarrollo lo haga en la base de datos.')
-def test_hu009_articulos_no_habilitados():
-    pass
+# Desde la pantalla no se puede deshabilitar un artículo. Para esta prueba alguien con acceso
+# a la base de datos (Dana) pone habilitado = False a un artículo de prueba y se pasa su título:
+#   $env:SGC_ARTICULO_DESHABILITADO="QA HU008 <ID> – Asociación con el autor"
+# Sin esa variable, la prueba queda como SKIPPED (Bloqueado).
+@pytest.mark.skipif(not os.getenv('SGC_ARTICULO_DESHABILITADO'),
+                    reason='Matriz HU009-CP-009: falta deshabilitar un artículo en la base de datos '
+                           '(no hay pantalla para hacerlo) y poner su título en SGC_ARTICULO_DESHABILITADO.')
+def test_hu009_articulos_no_habilitados(navegador, evidencia):
+    """Matriz CP-009 (no está en el diseño). Un artículo deshabilitado no aparece en el listado."""
+    titulo = os.getenv('SGC_ARTICULO_DESHABILITADO')
+    abrir_consulta_comite(navegador)
+    assert fila_de_articulo(navegador, titulo) is None, 'El artículo deshabilitado aparece en el listado'
+    evidencia('EXITO')

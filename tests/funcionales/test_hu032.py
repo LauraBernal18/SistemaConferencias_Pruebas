@@ -1,4 +1,5 @@
 # HU-032 · Consultar artículos propios · casos del diseño HU032-CP01 a CP09 (+ CP-009 de la matriz)
+# CP05 y CP06 (detalle del artículo) se quitaron: el detalle tiene su propia HU en el Sprint 2.
 # Datos previos: 3 artículos de autor@pruebas.co, 1 de otra autora y una cuenta sin artículos.
 
 import pytest
@@ -41,17 +42,6 @@ def test_hu032_cp04_estado_actual(navegador, evidencia, datos_previos):
         fila = fila_de_articulo(navegador, datos_previos['titulos'][clave])
         assert fila is not None and 'REGISTRADO' in fila.upper(), fila
     evidencia('EXITO')
-
-
-@pytest.mark.skip(reason='HU032-CP05 (matriz CP-005): «Mis artículos» no tiene vista de detalle.')
-def test_hu032_cp05_detalle_articulo():
-    pass
-
-
-@pytest.mark.skip(reason='HU032-CP06 (matriz CP-006): no hay vista de detalle; que el autor no ve '
-                         'artículos ajenos se comprueba en CP02.')
-def test_hu032_cp06_detalle_ajeno():
-    pass
 
 
 def test_hu032_cp07_sin_articulos(navegador, evidencia, datos_previos):
