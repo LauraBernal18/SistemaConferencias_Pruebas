@@ -1,19 +1,31 @@
 import os
 import re
+
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 from selenium import webdriver
+from pathlib import Path
+from selenium.webdriver.chrome.service import Service
 
 ROOT = Path(__file__).resolve().parents[1]
+ruta_driver = (
+    Path(__file__).resolve().parent.parent
+    / "drivers"
+    / "chromedriver.exe"
+)
+service = Service(executable_path=str(ruta_driver))
 
 
 @pytest.fixture
 def navegador():
     options = webdriver.ChromeOptions()
     options.add_argument('--start-maximized')
-    driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(
+    service=service,
+    options=options
+    )
     driver.set_page_load_timeout(100)
     yield driver
     driver.quit()

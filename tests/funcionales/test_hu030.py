@@ -18,19 +18,58 @@ NEW_DATES = {
 }
 
 
+def wait_config_ready(d, timeout=100):
+    """Espera la carga asíncrona real de fechas y líneas, no solo el selector."""
+    def ready(driver):
+        page = body(driver)
+        if 'Cargando plazos y líneas temáticas' in page:
+            return False
+        required = ('POSTULACION-inicio', 'EVALUACION-inicio',
+                    'nombre-linea', 'descripcion-linea')
+        return all(driver.find_elements(By.ID, name) for name in required)
+
+    try:
+        WebDriverWait(d, timeout, poll_frequency=0.5).until(ready)
+    except Exception as exc:
+        selected = d.find_elements(By.ID, 'conferencia-configuracion')
+        selected_name = Select(selected[0]).first_selected_option.text if selected else '(sin selector)'
+        raise AssertionError(
+            f'No terminó de cargar la configuración de {selected_name} '
+            f'en {timeout}s. Texto visible: {body(d)[:650]!r}'
+        ) from exc
+
+
 def open_config(d):
-    # Navegar por interfaz de usuario; Vercel puede devolver 404 en una URL SPA abierta directamente.
+    # Navegar por interfaz, no URL directa: Vercel puede responder 404.
     click_text(d, 'Configurar fechas y líneas temáticas')
-    WebDriverWait(d, 30).until(EC.visibility_of_element_located((By.ID, 'conferencia-configuracion')))
+    WebDriverWait(d, 30).until(
+        EC.visibility_of_element_located((By.ID, 'conferencia-configuracion'))
+    )
+    wait_config_ready(d)
 
 
 def select_conference(d, name):
-    select = d.find_element(By.ID, 'conferencia-configuracion')
-    assert name in select.text, f'No existe la conferencia {name}'
-    Select(select).select_by_visible_text(name)
-    WebDriverWait(d, 20).until(lambda x: name in body(x))
-    # Espera de que el valor seleccionado concuerde
-    assert Select(d.find_element(By.ID, 'conferencia-configuracion')).first_selected_option.text.strip() == name
+    selector = WebDriverWait(d, 30).until(
+        EC.presence_of_element_located((By.ID, 'conferencia-configuracion'))
+    )
+    options = Select(selector).options
+    matches = [opt for opt in options if opt.text.strip() == name]
+    assert matches, f'No existe la conferencia {name}. Opciones: {[o.text for o in options]}'
+
+    current = Select(selector).first_selected_option.text.strip()
+    if current != name:
+        # Durante cambios/cargas, algunas opciones pueden estar deshabilitadas.
+        WebDriverWait(d, 100, poll_frequency=0.5).until(
+            lambda driver: next((o.is_enabled() for o in
+                Select(driver.find_element(By.ID, 'conferencia-configuracion')).options
+                if o.text.strip() == name), False)
+        )
+        Select(d.find_element(By.ID, 'conferencia-configuracion')).select_by_visible_text(name)
+
+    WebDriverWait(d, 30).until(lambda driver:
+        Select(driver.find_element(By.ID, 'conferencia-configuracion'))
+        .first_selected_option.text.strip() == name)
+    wait_config_ready(d)
 
 
 def setup(d, who='admin', conf=QA):
@@ -64,22 +103,48 @@ def refresh_config(d, conf=QA):
     select_conference(d, alternate)
     select_conference(d, conf)
 
-
 def line_card(d, name):
     return WebDriverWait(d, 20).until(EC.visibility_of_element_located((By.XPATH, f'//article[.//h3[normalize-space()="{name}"]]')))
 
 
 def line_snapshot(d):
+    wait_config_ready(d)
     return {e.find_element(By.TAG_NAME, 'h3').text: e.text for e in d.find_elements(By.CSS_SELECTOR, 'article')}
 
 
-def add_line(d, name, description):
-    d.find_element(By.ID, 'nombre-linea').send_keys(name)
-    d.find_element(By.ID, 'descripcion-linea').send_keys(description)
-    click_text(d, 'Agregar línea temática')
-    visible_text(d, f'La línea temática {name} se guardó correctamente.', 90)
-    assert 'Habilitada' in line_card(d, name).text
 
+def add_line(d, name, description):
+    wait_config_ready(d)
+
+    campo_nombre = d.find_element(By.ID, 'nombre-linea')
+    campo_descripcion = d.find_element(By.ID, 'descripcion-linea')
+
+    campo_nombre.clear()
+    campo_nombre.send_keys(name)
+
+    campo_descripcion.clear()
+    campo_descripcion.send_keys(description)
+
+    click_text(d, 'Agregar línea temática')
+
+    mensaje_esperado = (
+        f'La línea temática «{name}» se guardó correctamente.'
+    )
+
+    visible_text(d, mensaje_esperado, 90)
+
+    tarjeta = line_card(d, name)
+
+    assert 'Habilitada' in tarjeta.text, (
+        f'La línea temática {name} no aparece habilitada.'
+    )
+
+
+def line_cards(d, name):
+    return d.find_elements(
+        By.XPATH,
+        f'//article[.//h3[normalize-space()="{name}"]]'
+    )
 
 def edit_line(d, name, description):
     line_card(d, name).find_element(By.XPATH, './/button[normalize-space()="Editar"]').click()
@@ -90,8 +155,7 @@ def edit_line(d, name, description):
     form.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
     visible_text(d, f'La línea temática «{name}» se guardó correctamente.', 90)
     assert description in line_card(d, name).text
-
-
+    
 def deactivate(d, name):
     card = line_card(d, name)
     if 'Desactivada' in card.text:
@@ -102,7 +166,7 @@ def deactivate(d, name):
 
 
 @pytest.mark.parametrize('who', ['admin', 'comite'])
-def test_hu030_cp01_usuarios_autorizados(navegador):
+def test_hu030_cp01_usuarios_autorizados(navegador, who):
     setup(navegador, who)
     assert 'Configuración de conferencia' in body(navegador)
     assert 'Fechas límite' in body(navegador)
@@ -129,7 +193,6 @@ def test_hu030_cp02_guardar_cinco_plazos(navegador, evidencia):
         visible_text(navegador, 'Los cinco plazos de la conferencia se guardaron correctamente.', 90)
         refresh_config(navegador)
         assert dates(navegador) == original, 'No se restauraron los plazos originales'
-
 
 def test_hu030_cp03_fin_antes_inicio(navegador):
     setup(navegador)
@@ -170,7 +233,6 @@ def test_hu030_cp06_consultar_lineas(navegador):
         assert 'Habilitada' in line_card(navegador, name).text
     assert 'Desactivada' in line_card(navegador, 'prueba').text
 
-
 def test_hu030_cp07_configuraciones_aisladas(navegador):
     setup(navegador, conf=MAIN)
     main_dates, main_lines = dates(navegador), line_snapshot(navegador)
@@ -209,7 +271,6 @@ def test_hu030_cp09_plazos_registro_articulos():
 @pytest.mark.skip(reason='HU030-CP10: Vercel devuelve 404 al navegar directamente a rutas SPA también con administrador; pendiente corregir fallback y verificar permisos')
 def test_hu030_cp10_autor_sin_permiso():
     pass
-
 
 def test_hu030_cp11_mensaje_guardado_linea(navegador, evidencia):
     setup(navegador)
