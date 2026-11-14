@@ -1,232 +1,115 @@
-
-import os
-
-import pytest
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-
-# HU-030: Configurar fechas y líneas temáticas
-
-URL = os.getenv(
-    "TEST_FRONTEND_URL",
-    "https://conferencia-cientifica-ds1-git-develop-ds-6.vercel.app"
-)
-CLAVE = os.getenv("TEST_PASSWORD", "Prueba12345")
-
-USUARIOS = {
-    "admin": "admin@pruebas.co",
-    "comite": "comite@pruebas.co",
-    "autor": "autor@pruebas.co"
-}
+def test_hu030_cp04_etapas_superpuestas(navegador):
+    login(navegador)
+    fecha_qa(navegador)
+    originales = leer_fechas(navegador)
+    modificar_input_react(navegador, "EVALUACION-inicio", "2026-12-12T16:07")
+    guardar_fechas(navegador)
+    esperar_texto(navegador, "«Evaluación por el comité científico» debe iniciar después de que termine «Postulación de artículos».")
+    fecha_qa(navegador)
+    assert leer_fechas(navegador) == originales
 
 
-@pytest.fixture
-def navegador():
-    driver = webdriver.Chrome()
-    driver.maximize_window()
-    yield driver
-    driver.quit()
+# CP05: crear, editar y desactivar una línea de prueba
+def test_hu030_cp05_gestion_lineas(navegador):
+    login(navegador)
+    fecha_qa(navegador)
+    nombre = "Computación en la nube QA_" + uuid.uuid4().hex[:8]
+    agregar_linea(navegador, nombre, "Arquitecturas y servicios de computación en la nube")
+    try:
+        editar_descripcion(navegador, nombre, "Arquitecturas, servicios y seguridad en la nube")
+        screenshot(navegador, "HU030-CP05_EDICION")
+    finally:
+        # No hay eliminación confirmada: se desactiva para no dejar líneas habilitadas.
+        desactivar_linea(navegador, nombre)
+    assert "Desactivada" in articulo_linea(navegador, nombre).text
 
 
-def iniciar_sesion(driver, correo):
-    driver.get(f"{URL}/login")
-    espera = WebDriverWait(driver, 30)
-
-    espera.until(
-        EC.visibility_of_element_located((By.ID, "correo"))
-    ).send_keys(correo)
-
-    driver.find_element(
-        By.ID, "contrasena"
-    ).send_keys(CLAVE)
-
-    captcha = driver.find_element(
-        By.CSS_SELECTOR, '[role="checkbox"]'
-    )
-    captcha.click()
-
-    espera.until(
-        EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, 'button[type="submit"]')
-        )
-    ).click()
-
-    # Espera ampliada por Render.
-    WebDriverWait(driver, 90).until(
-        lambda d: "Cerrar sesión" in
-        d.find_element(By.TAG_NAME, "body").text
-    )
-
-
-def abrir_configuracion(driver):
-    driver.get(f"{URL}/configuracion-conferencia")
-
-    WebDriverWait(driver, 30).until(
-        EC.visibility_of_element_located(
-            (By.ID, "conferencia-configuracion")
-        )
-    )
-
-
-# CP01: Acceso de administrador y comité
-
-@pytest.mark.parametrize(
-    "rol", ["admin", "comite"]
-)
-def test_hu030_cp01_acceso_autorizado(navegador, rol):
-    iniciar_sesion(navegador, USUARIOS[rol])
-    abrir_configuracion(navegador)
-
-    contenido = navegador.find_element(
-        By.TAG_NAME, "body"
-    ).text
-
-    assert "Configuración de conferencia" in contenido
-    assert "Fechas límite" in contenido
-    assert "Líneas temáticas" in contenido
-
-
-# CP02: Guardar fechas límite
-
-@pytest.mark.skip(
-    reason="Pendiente: requiere conferencia QA para guardar fechas."
-)
-def test_hu030_cp02_guardar_fechas():
-    pass
-
-
-# CP03: Fecha inválida
-
-@pytest.mark.skip(
-    reason="Pendiente: verificar validación sin afectar fechas compartidas."
-)
-def test_hu030_cp03_fecha_invalida():
-    pass
-
-
-# CP04: Secuencia cronológica incorrecta
-
-@pytest.mark.skip(
-    reason="Pendiente: requiere prueba controlada de guardado."
-)
-def test_hu030_cp04_orden_fechas():
-    pass
-
-
-# CP05: Crear, editar y desactivar línea temática
-
-@pytest.mark.skip(
-    reason="Pendiente: requiere datos de prueba aislados y limpieza."
-)
-def test_hu030_cp05_gestionar_lineas():
-    pass
-
-
-# CP06: Consultar líneas temáticas
-
+# CP06: líneas de QA y estado visible
 def test_hu030_cp06_consultar_lineas(navegador):
-    iniciar_sesion(navegador, USUARIOS["admin"])
-    abrir_configuracion(navegador)
-
-    selector = navegador.find_element(
-        By.ID, "conferencia-configuracion"
-    )
-
-    assert "Congreso de Pruebas" in selector.text
-
-    nombres = [
-        "Bases de datos",
-        "Ciberseguridad",
-        "Ingeniería de software",
-        "Inteligencia artificial"
-    ]
-
-    for nombre in nombres:
-        linea = WebDriverWait(navegador, 30).until(
-            EC.visibility_of_element_located((
-                By.XPATH,
-                f"//article[.//h3[normalize-space()='{nombre}']]"
-            ))
-        )
-
-        assert "Habilitada" in linea.text
+    login(navegador)
+    fecha_qa(navegador)
+    for nombre in ["Ciencia de datos", "Interacción humano-computador", "Redes y comunicaciones"]:
+        assert "Habilitada" in articulo_linea(navegador, nombre).text
+    assert "Desactivada" in articulo_linea(navegador, "prueba").text
 
 
-# CP07: Configuración independiente
+# CP07: dos conferencias muestran configuraciones diferentes
+def test_hu030_cp07_configuraciones_independientes(navegador):
+    login(navegador)
+    abrir_config(navegador)
+    seleccionar(navegador, MAIN)
+    main_fechas, main_lineas = leer_fechas(navegador), datos_lineas(navegador)
+    seleccionar(navegador, QA)
+    qa_fechas, qa_lineas = leer_fechas(navegador), datos_lineas(navegador)
+    assert main_fechas != qa_fechas
+    assert "Bases de datos" in main_lineas
+    assert "Ciencia de datos" in qa_lineas
+    assert "Ciencia de datos" not in main_lineas
+    assert "Bases de datos" not in qa_lineas
 
-@pytest.mark.skip(
-    reason="Pendiente: el entorno solo tiene una conferencia."
-)
-def test_hu030_cp07_configuraciones_independientes():
+
+# CP08: modificar QA y comprobar que MAIN no cambia; restaurar QA
+def test_hu030_cp08_cambios_solo_qa(navegador):
+    login(navegador)
+    abrir_config(navegador)
+    seleccionar(navegador, MAIN)
+    main_antes = (leer_fechas(navegador), datos_lineas(navegador))
+    seleccionar(navegador, QA)
+    card = articulo_linea(navegador, "Ciencia de datos")
+    desc_original = card.find_element(By.TAG_NAME, "p").text
+    temporal = desc_original + " [verificación QA]"
+    try:
+        editar_descripcion(navegador, "Ciencia de datos", temporal)
+        seleccionar(navegador, MAIN)
+        main_despues = (leer_fechas(navegador), datos_lineas(navegador))
+        assert main_despues == main_antes, "¡Modificar QA alteró la conferencia principal!"
+    finally:
+        seleccionar(navegador, QA)
+        editar_descripcion(navegador, "Ciencia de datos", desc_original)
+
+
+# CP09: integración con HU-008, bloqueada actualmente
+@pytest.mark.skip(reason="HU-008: selector de líneas temáticas inhabilitado para autor; desarrollo debe corregir integración frontend/backend antes de ejecutar este caso")
+def test_hu030_cp09_plazo_permite_o_restringe_articulos():
     pass
 
 
-# CP08: Modificar sin afectar otra conferencia
-
-@pytest.mark.skip(
-    reason="Pendiente: requiere dos conferencias de prueba."
-)
-def test_hu030_cp08_modificacion_independiente():
-    pass
-
-
-# CP09: Restricciones según fechas
-
-@pytest.mark.skip(
-    reason="Pendiente: requiere pruebas controladas de plazos."
-)
-def test_hu030_cp09_restricciones_por_fechas():
-    pass
+# CP10: un autor no puede modificar la configuración
+def test_hu030_cp10_autor_sin_permisos(navegador):
+    login(navegador, "autor")
+    navegador.get(f"{BASE_URL}/configuracion-conferencia")
+    WebDriverWait(navegador, 30).until(lambda d: d.current_url.rstrip("/") != f"{BASE_URL}/configuracion-conferencia" or
+                                      "Acceso denegado" in texto(d) or "No autorizado" in texto(d) or
+                                      d.find_elements(By.ID, "conferencia-configuracion"))
+    # No basta con comprobar el texto; el autor no debe tener controles de escritura activos.
+    assert not any(b.is_displayed() and b.is_enabled() for b in navegador.find_elements(
+        By.XPATH, "//button[normalize-space()='Guardar fechas límite' or normalize-space()='Agregar línea temática']"
+    )), "El autor tiene controles de configuración habilitados"
 
 
-# CP10: Autor sin permiso
-
-def test_hu030_cp10_acceso_no_autorizado(navegador):
-    iniciar_sesion(navegador, USUARIOS["autor"])
-
-    navegador.get(f"{URL}/configuracion-conferencia")
-
-    # Esperar a que se resuelva la navegación.
-    WebDriverWait(navegador, 30).until(
-        lambda d: (
-            "/configuracion-conferencia" not in d.current_url
-            or "Acceso denegado" in
-            d.find_element(By.TAG_NAME, "body").text
-            or "No autorizado" in
-            d.find_element(By.TAG_NAME, "body").text
-            or d.find_elements(
-                By.ID, "conferencia-configuracion"
-            )
-        )
-    )
-
-    # No debe poder utilizar el formulario de configuración.
-    assert not any(
-        boton.is_displayed() and boton.is_enabled()
-        for boton in navegador.find_elements(
-            By.XPATH,
-            "//button[normalize-space()='Guardar fechas límite'"
-            " or normalize-space()='Agregar línea temática']"
-        )
-    )
+# CP11: confirmación al crear línea; luego desactivar para no dejarla habilitada
+def test_hu030_cp11_confirmacion_guardado(navegador):
+    login(navegador)
+    fecha_qa(navegador)
+    nombre = "Arquitectura de software QA_" + uuid.uuid4().hex[:8]
+    agregar_linea(navegador, nombre, "Diseño de sistemas y arquitecturas de software")
+    try:
+        assert "Habilitada" in articulo_linea(navegador, nombre).text
+        screenshot(navegador, "HU030-CP11_EXITO")
+    finally:
+        desactivar_linea(navegador, nombre)
 
 
-# CP11: Confirmación del guardado
-
-@pytest.mark.skip(
-    reason="Pendiente: confirmar mensaje y entorno de escritura seguro."
-)
-def test_hu030_cp11_guardado_exitoso():
-    pass
-
-
-# CP12: Mensajes de error de fechas
-
-@pytest.mark.skip(
-    reason="Pendiente: verificar mensaje exacto y validación."
-)
-def test_hu030_cp12_errores_configuracion():
-    pass
+# CP12: falta inicio de evaluación, error junto al recuadro y no persistencia
+def test_hu030_cp12_fecha_incompleta(navegador):
+    login(navegador)
+    fecha_qa(navegador)
+    originales = leer_fechas(navegador)
+    modificar_input_react(navegador, "EVALUACION-inicio", "")
+    guardar_fechas(navegador)
+    error = "Completa las fechas de inicio y fin para «Evaluación por el comité científico»."
+    esperar_texto(navegador, error)
+    fieldset = navegador.find_element(By.XPATH, "//fieldset[.//input[@id='EVALUACION-inicio']]")
+    assert error in fieldset.text, "El error no aparece dentro del recuadro de evaluación"
+    fecha_qa(navegador)
+    assert leer_fechas(navegador) == originales, "¡Se guardaron fechas incompletas!"
