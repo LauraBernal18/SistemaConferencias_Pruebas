@@ -95,25 +95,24 @@ def fila_por_correo(listado, correo):
 
 def datos_fila(fila):
     texto = fila.text
-    roles = {
-    t.text.strip().upper()
-    for t in fila.find_elements(By.XPATH, './/span')
-    if t.text.strip().upper() in {'ADMIN', 'COMITE', 'AUTOR'}
-}
+    roles = {t.text.strip().upper() for t in fila.find_elements(By.XPATH, './/span') if t.text.strip().upper() in {'ADMIN', 'COMITE', 'AUTOR'}}
     return texto, roles
-def test_hu002_cp01_administrador_consulta_usuarios(navegador):
+
+def test_hu002_cp01_administrador_consulta_usuarios(navegador, evidencia):
     listado = abrir_listado(navegador, 'admin')
     assert listado.is_displayed()
     assert 'Listado de usuarios' in listado.text
+    evidencia('EXITO')
 
 
-def test_hu002_cp02_comite_consulta_usuarios(navegador):
+def test_hu002_cp02_comite_consulta_usuarios(navegador, evidencia):
     listado = abrir_listado(navegador, 'comite')
     assert listado.is_displayed()
     assert 'Listado de usuarios' in listado.text
+    evidencia('EXITO')
 
 
-def test_hu002_cp03_muestra_campos_de_usuarios(navegador):
+def test_hu002_cp03_muestra_campos_de_usuarios(navegador, evidencia):
     listado = abrir_listado(navegador)
     texto = listado.text
     for campo in ('Nombre', 'Correo electrónico', 'Institución', 'Roles'):
@@ -124,17 +123,19 @@ def test_hu002_cp03_muestra_campos_de_usuarios(navegador):
         assert esperado['nombre'] in texto_fila
         assert correo in texto_fila
         assert esperado['institucion'] in texto_fila
+    evidencia('EXITO')
 
 
-def test_hu002_cp04_identifica_roles(navegador):
+def test_hu002_cp04_identifica_roles(navegador, evidencia):
     listado = abrir_listado(navegador)
     for correo, esperado in USUARIOS.items():
         fila = fila_por_correo(listado, correo)
         _, roles = datos_fila(fila)
         assert roles == esperado['roles'], f'{correo}: se esperaban {esperado["roles"]}, se encontraron {roles}'
+    evidencia('EXITO')
 
 
-def test_hu002_cp05_datos_coinciden_con_registros_qa(navegador):
+def test_hu002_cp05_datos_coinciden_con_registros_qa(navegador, evidencia):
     """Contraste con cuentas QA conocidas; no constituye verificación directa de base de datos."""
     listado = abrir_listado(navegador)
     for correo, esperado in USUARIOS.items():
@@ -143,9 +144,10 @@ def test_hu002_cp05_datos_coinciden_con_registros_qa(navegador):
         assert correo in texto_fila
         assert esperado['institucion'] in texto_fila
         assert roles == esperado['roles']
+    evidencia('EXITO')
 
 
-def test_hu002_cp06_autor_no_accede_listado(navegador):
+def test_hu002_cp06_autor_no_accede_listado(navegador, evidencia):
     """CA-012: el rol AUTOR no puede abrir el listado administrativo.
 
     A diferencia de los reportes históricos del Sprint 1, este caso se ejecuta.
@@ -194,18 +196,19 @@ def test_hu002_cp06_autor_no_accede_listado(navegador):
     assert 'admin@pruebas.co' not in texto.lower(), (
         'El usuario AUTOR pudo ver información del listado administrativo.'
     )
+    evidencia('EXITO')
 
 
-def test_hu002_cp07_no_expone_credenciales_en_interfaz(navegador):
+def test_hu002_cp07_no_expone_credenciales_en_interfaz(navegador, evidencia):
     listado = abrir_listado(navegador)
     texto = listado.text.lower()
     for termino in ('contraseña', 'password', 'token', 'hash', 'secret', PASSWORD.lower()):
         assert termino not in texto, f'La interfaz presenta información potencialmente sensible: {termino}'
     # Los datos públicos del listado sí deben estar visibles.
     assert 'admin@pruebas.co' in texto
-
-
-def test_hu002_cp08_solo_usuarios_habilitados(navegador):
+    evidencia('EXITO')
+    
+def test_hu002_cp08_solo_usuarios_habilitados(navegador, evidencia):
     """Comprueba que la cuenta QA deshabilitada no figure entre las cuentas consultables."""
     listado = abrir_listado(navegador)
     correos_visibles = {
@@ -220,6 +223,7 @@ def test_hu002_cp08_solo_usuarios_habilitados(navegador):
         'El listado incluye deshabilitado@pruebas.co, una cuenta que debe estar deshabilitada.'
     )
 
+    evidencia('EXITO')
 
 # CA-010 (filtros) y CA-011 (sin coincidencias) se verifican en HU-003;
 # no se duplican como pruebas independientes de HU-002.
