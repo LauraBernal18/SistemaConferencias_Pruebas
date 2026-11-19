@@ -374,9 +374,25 @@ def test_hu030_cp09_plazos_registro_articulos(navegador, evidencia):
                             f'Fechas originales: {original}. Error: {exc}')
 
 
-@pytest.mark.skip(reason='HU030-CP10: Vercel devuelve 404 al navegar directamente a rutas SPA también con administrador; pendiente corregir fallback y verificar permisos')
-def test_hu030_cp10_autor_sin_permiso():
-    pass
+def test_hu030_cp10_autor_sin_permiso(navegador, evidencia):
+    # Iniciar sesión como autor.
+    login(navegador, 'autor')
+    visible_text(navegador, 'Panel de autor')
+
+    # Intentar acceder directamente a la configuración administrativa.
+    navegador.get(f'{BASE}/configuracion-conferencia')
+
+    # La aplicación debe restringir el acceso y regresar al panel de autor.
+    WebDriverWait(navegador, 30).until(
+        lambda d: 'Panel de autor' in body(d)
+    )
+
+    # Comprobar que no se muestre la funcionalidad administrativa.
+    assert 'Configuración de conferencia' not in body(navegador)
+    assert not navegador.find_elements(By.ID, 'conferencia-configuracion')
+
+    evidencia('REVERIFICACION_EXITO')
+
 
 def test_hu030_cp11_mensaje_guardado_linea(navegador, evidencia):
     setup(navegador)
