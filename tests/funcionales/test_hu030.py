@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 from contextlib import contextmanager
 import pytest
 from selenium.webdriver.common.by import By
@@ -76,12 +77,11 @@ def setup(d, who='admin', conf=QA):
     login(d, who)
     open_config(d)
     select_conference(d, conf)
-
+    
 
 def dates(d):
     return {f'{stage}-{kind}': d.find_element(By.ID, f'{stage}-{kind}').get_attribute('value')
             for stage in STAGES for kind in ('inicio','fin')}
-
 
 def set_date(d, stage, kind, value):
     react_value(d, d.find_element(By.ID, f'{stage}-{kind}'), value)
@@ -103,6 +103,7 @@ def refresh_config(d, conf=QA):
     select_conference(d, alternate)
     select_conference(d, conf)
 
+
 def line_card(d, name):
     return WebDriverWait(d, 20).until(EC.visibility_of_element_located((By.XPATH, f'//article[.//h3[normalize-space()="{name}"]]')))
 
@@ -112,39 +113,13 @@ def line_snapshot(d):
     return {e.find_element(By.TAG_NAME, 'h3').text: e.text for e in d.find_elements(By.CSS_SELECTOR, 'article')}
 
 
-
 def add_line(d, name, description):
-    wait_config_ready(d)
-
-    campo_nombre = d.find_element(By.ID, 'nombre-linea')
-    campo_descripcion = d.find_element(By.ID, 'descripcion-linea')
-
-    campo_nombre.clear()
-    campo_nombre.send_keys(name)
-
-    campo_descripcion.clear()
-    campo_descripcion.send_keys(description)
-
+    d.find_element(By.ID, 'nombre-linea').send_keys(name)
+    d.find_element(By.ID, 'descripcion-linea').send_keys(description)
     click_text(d, 'Agregar línea temática')
+    visible_text(d, f'La línea temática «{name}» se guardó correctamente.', 90)
+    assert 'Habilitada' in line_card(d, name).text
 
-    mensaje_esperado = (
-        f'La línea temática «{name}» se guardó correctamente.'
-    )
-
-    visible_text(d, mensaje_esperado, 90)
-
-    tarjeta = line_card(d, name)
-
-    assert 'Habilitada' in tarjeta.text, (
-        f'La línea temática {name} no aparece habilitada.'
-    )
-
-
-def line_cards(d, name):
-    return d.find_elements(
-        By.XPATH,
-        f'//article[.//h3[normalize-space()="{name}"]]'
-    )
 
 def edit_line(d, name, description):
     line_card(d, name).find_element(By.XPATH, './/button[normalize-space()="Editar"]').click()
@@ -155,7 +130,8 @@ def edit_line(d, name, description):
     form.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
     visible_text(d, f'La línea temática «{name}» se guardó correctamente.', 90)
     assert description in line_card(d, name).text
-    
+
+
 def deactivate(d, name):
     card = line_card(d, name)
     if 'Desactivada' in card.text:
@@ -163,9 +139,10 @@ def deactivate(d, name):
     card.find_element(By.XPATH, './/button[normalize-space()="Desactivar"]').click()
     visible_text(d, f'La línea temática «{name}» se desactivó correctamente.', 90)
     assert 'Desactivada' in line_card(d, name).text
-
+    
 
 @pytest.mark.parametrize('who', ['admin', 'comite'])
+    
 def test_hu030_cp01_usuarios_autorizados(navegador, who):
     setup(navegador, who)
     assert 'Configuración de conferencia' in body(navegador)
@@ -194,6 +171,7 @@ def test_hu030_cp02_guardar_cinco_plazos(navegador, evidencia):
         refresh_config(navegador)
         assert dates(navegador) == original, 'No se restauraron los plazos originales'
 
+
 def test_hu030_cp03_fin_antes_inicio(navegador):
     setup(navegador)
     original = dates(navegador)
@@ -213,8 +191,7 @@ def test_hu030_cp04_orden_incorrecto(navegador):
     visible_text(navegador, '«Evaluación por el comité científico» debe iniciar después de que termine «Postulación de artículos».')
     refresh_config(navegador)
     assert dates(navegador) == original
-
-
+    
 def test_hu030_cp05_crear_editar_desactivar(navegador, evidencia):
     setup(navegador)
     name = f'Computación en la nube QA_{uuid.uuid4().hex[:8]}'
@@ -232,6 +209,7 @@ def test_hu030_cp06_consultar_lineas(navegador):
     for name in ('Ciencia de datos','Interacción humano-computador','Redes y comunicaciones'):
         assert 'Habilitada' in line_card(navegador, name).text
     assert 'Desactivada' in line_card(navegador, 'prueba').text
+
 
 def test_hu030_cp07_configuraciones_aisladas(navegador):
     setup(navegador, conf=MAIN)
@@ -263,14 +241,158 @@ def test_hu030_cp08_cambios_solo_qa(navegador, evidencia):
         assert original_description in line_card(navegador, name).text
 
 
-@pytest.mark.skip(reason='HU030-CP09 bloqueado por HU-008: líneas temáticas aparecen inhabilitadas en el registro del autor; no alterar plazos hasta corregir integración')
-def test_hu030_cp09_plazos_registro_articulos():
-    pass
+def reset_session(d):
+    """Cierra la sesión de pruebas entre roles sin navegar a rutas SPA internas."""
+    d.get(BASE)
+    d.execute_script('window.localStorage.clear(); window.sessionStorage.clear();')
+    d.delete_all_cookies()
+    d.get(BASE)
+    
+def open_article_form(d):
+    """Navega desde el panel del autor: evita el 404 al abrir una ruta SPA directamente."""
+    click_text(d, 'Registrar un artículo', 30)
+    WebDriverWait(d, 40).until(EC.visibility_of_element_located((By.ID, 'titulo-articulo')))
+    WebDriverWait(d, 90).until(lambda driver:
+        len(Select(driver.find_element(By.ID, 'convocatoria')).options) > 0)
 
 
-@pytest.mark.skip(reason='HU030-CP10: Vercel devuelve 404 al navegar directamente a rutas SPA también con administrador; pendiente corregir fallback y verificar permisos')
-def test_hu030_cp10_autor_sin_permiso():
-    pass
+def choose_qa_article(d, allow_unavailable=False):
+    selector = Select(d.find_element(By.ID, 'convocatoria'))
+    qa = [opt for opt in selector.options
+          if opt.text.strip() == 'Conferencia de Pruebas QA - 2027']
+    if not qa or not qa[0].is_enabled():
+        if allow_unavailable:
+            return False  # La convocatoria vencida ya no admite selección en la interfaz.
+        raise AssertionError('No se puede seleccionar la conferencia QA durante su plazo vigente')
+    selector.select_by_visible_text('Conferencia de Pruebas QA - 2027')
+    WebDriverWait(d, 90).until(lambda driver: 'Ciencia de datos' in
+        [opt.text.strip() for opt in Select(driver.find_element(By.ID, 'linea-tematica')).options])
+    Select(d.find_element(By.ID, 'linea-tematica')).select_by_visible_text('Ciencia de datos')
+    return True
+
+
+def fill_article(d, title):
+    d.find_element(By.ID, 'titulo-articulo').send_keys(title)
+    d.find_element(By.ID, 'resumen-articulo').send_keys(
+        'Propuesta de prueba QA para comprobar el control de plazos de postulación.')
+    d.find_element(By.ID, 'palabras-clave').send_keys('QA, automatización, plazos')
+    # Los campos del autor registrador se autocompletan y son readonly.
+    assert d.find_element(By.ID, 'autor-email-autor-registrador').get_attribute('value')
+    assert d.find_element(By.ID, 'autor-nombres-autor-registrador').get_attribute('readonly') is not None
+
+
+
+def test_hu030_cp09_plazos_registro_articulos(navegador, evidencia):
+    """Verifica postulación vigente y vencida, con restauración obligatoria de QA.
+
+    Advertencia: crea un artículo de prueba real y modifica temporalmente la
+    fecha de cierre de postulación de la conferencia QA.
+    """
+    d = navegador
+    original = None
+    dates_changed = False
+    positive_title = f'QA plazo vigente {uuid.uuid4().hex[:10]}'
+    negative_title = f'QA plazo vencido {uuid.uuid4().hex[:10]}'
+
+    try:
+        # Leer el periodo original ANTES de crear artículos.
+        setup(d, 'admin', QA)
+        original = dates(d)
+        start = datetime.fromisoformat(original['POSTULACION-inicio'])
+        end = datetime.fromisoformat(original['POSTULACION-fin'])
+        now = datetime.now()
+        if not start < now < end:
+            pytest.skip('CP09 requiere que la postulación de QA esté vigente para la comprobación positiva; '
+                        f'periodo actual: {start} a {end}, ahora: {now}. No se modificaron plazos.')
+
+        # Fase 1: una postulación real, dentro del plazo.
+        reset_session(d)
+        login(d, 'autor')
+        open_article_form(d)
+        choose_qa_article(d)
+        fill_article(d, positive_title)
+        click_text(d, 'Registrar propuesta')
+        visible_text(d, f'El artículo "{positive_title}" se registró correctamente.', 90)
+        assert 'Conferencia de Pruebas QA - 2027' in body(d)
+        assert 'Ciencia de datos' in body(d)
+        evidencia('PLAZO_VIGENTE_EXITO')
+
+        # Fase 2: cerrar la convocatoria en el pasado y comprobar rechazo.
+        reset_session(d)
+        setup(d, 'admin', QA)
+        expiry = (datetime.now() - timedelta(days=2)).replace(second=0, microsecond=0)
+        assert expiry > start, 'No existe margen para configurar un cierre pasado válido.'
+        # Activar protección ANTES de intentar guardar: ante errores se intentará restaurar.
+        dates_changed = True
+        set_date(d, 'POSTULACION', 'fin', expiry.strftime('%Y-%m-%dT%H:%M'))
+        save_dates(d)
+        visible_text(d, 'Los cinco plazos de la conferencia se guardaron correctamente.', 90)
+        refresh_config(d)
+        assert dates(d)['POSTULACION-fin'] == expiry.strftime('%Y-%m-%dT%H:%M')
+
+        reset_session(d)
+        login(d, 'autor')
+        open_article_form(d)
+        if not choose_qa_article(d, allow_unavailable=True):
+            # Rechazo en interfaz: la conferencia vencida no puede seleccionarse.
+            evidencia('PLAZO_VENCIDO_NO_SELECCIONABLE')
+        else:
+            fill_article(d, negative_title)
+            click_text(d, 'Registrar propuesta')
+            
+            # Si la convocatoria sigue seleccionable, se exige rechazo explícito.
+            def expired_response(driver):
+                txt = body(driver).lower()
+                if ('artículo registrado' in txt or
+                    f'el artículo "{negative_title.lower()}" se registró correctamente' in txt):
+                    return 'UNEXPECTED_SUCCESS'
+                negatives = ('plazo', 'fuera de fecha', 'fecha límite', 'vencid',
+                             'cerrad', 'finaliz', 'no está habilitad',
+                             'no se puede registrar', 'no se pueden registrar', 'no disponible')
+                lines = [line.strip().lower() for line in body(driver).splitlines()]
+                errors = [line for line in lines if any(x in line for x in negatives)
+                          and not line.startswith('fecha límite:') and line != 'fecha límite']
+                return 'REJECTED' if errors else False
+
+            outcome = WebDriverWait(d, 40).until(expired_response)
+            assert outcome == 'REJECTED', (
+                'El sistema permitió registrar un artículo después del vencimiento. '
+                f'Pantalla: {body(d)[:2000]}')
+            evidencia('PLAZO_VENCIDO_RECHAZO')
+    finally:
+        if dates_changed and original is not None:
+            try:
+                reset_session(d)
+                setup(d, 'admin', QA)
+                set_date(d, 'POSTULACION', 'fin', original['POSTULACION-fin'])
+                save_dates(d)
+                visible_text(d, 'Los cinco plazos de la conferencia se guardaron correctamente.', 90)
+                refresh_config(d)
+                assert dates(d) == original, 'La restauración de fechas QA fue incompleta'
+            except Exception as exc:
+                pytest.fail(f'URGENTE: revisar/restaurar manualmente plazos de la conferencia QA. '
+                            f'Fechas originales: {original}. Error: {exc}')
+
+
+def test_hu030_cp10_autor_sin_permiso(navegador, evidencia):
+    # Iniciar sesión como autor.
+    login(navegador, 'autor')
+    visible_text(navegador, 'Panel de autor')
+
+    # Intentar acceder directamente a la configuración administrativa.
+    navegador.get(f'{BASE}/configuracion-conferencia')
+
+    # La aplicación debe restringir el acceso y regresar al panel de autor.
+    WebDriverWait(navegador, 30).until(
+        lambda d: 'Panel de autor' in body(d)
+    )
+
+    # Comprobar que no se muestre la funcionalidad administrativa.
+    assert 'Configuración de conferencia' not in body(navegador)
+    assert not navegador.find_elements(By.ID, 'conferencia-configuracion')
+
+    evidencia('REVERIFICACION_EXITO')
+
 
 def test_hu030_cp11_mensaje_guardado_linea(navegador, evidencia):
     setup(navegador)

@@ -81,6 +81,26 @@ def test_hu006_cp09_permisos_rol_elegido(navegador, evidencia):
     evidencia('EXITO')
 
 
-@pytest.mark.skip(reason='HU006-CP10: ruta directa /configuracion-conferencia devuelve 404 incluso como administrador; revisar fallback SPA y permisos backend')
-def test_hu006_cp10_rutas_ajenas():
-    pass
+
+def test_hu006_cp10_rutas_ajenas(navegador, evidencia):
+    # Iniciar sesión con una cuenta que tiene varios roles.
+    login(navegador, 'multirol')
+    visible_text(navegador, '¿Con qué rol quieres trabajar?')
+
+    # Seleccionar únicamente el rol de autor.
+    choose_role(navegador, 'AUTOR')
+    visible_text(navegador, 'Panel de autor')
+
+    # Intentar acceder a una funcionalidad administrativa
+    # escribiendo directamente su dirección.
+    navegador.get(f'{BASE}/configuracion-conferencia')
+
+    # El sistema debe impedir el acceso y devolver al panel de autor.
+    WebDriverWait(navegador, 30).until(
+        lambda d: 'Panel de autor' in body(d)
+    )
+
+    assert 'Configuración de conferencia' not in body(navegador)
+    assert not navegador.find_elements(By.ID, 'conferencia-configuracion')
+
+    evidencia('REVERIFICACION_EXITO')

@@ -1,0 +1,23 @@
+{
+  "id": "20261114-074441",
+  "base": "https://conferencia-cientifica-ds1-git-develop-ds-6.vercel.app",
+  "creado": "2026-11-14T07:44:41",
+  "autora2": {
+    "nombre": "María Fernanda",
+    "apellido": "López",
+    "correo": "qa.autor.20261114-074441@example.com",
+    "institucion": "Universidad del Valle"
+  },
+  "sin_articulos": {
+    "nombre": "Juan",
+    "apellido": "Pérez",
+    "correo": "qa.autor2.20261114-074441@example.com",
+    "institucion": "Universidad Icesi"
+  },
+  "titulos": {
+    "ing1": "QA HU008 20261114-074441 – Pruebas automatizadas en aplicaciones web",
+    "ing2": "QA HU008 20261114-074441 – Resultado",
+    "ia": "QA HU008 20261114-074441 – Varios autores",
+    "bd": "QA HU009 20261114-074441 – Modelado de datos"
+  }
+}
