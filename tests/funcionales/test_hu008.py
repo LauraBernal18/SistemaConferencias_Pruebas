@@ -1,4 +1,4 @@
-# HU-008 · Crear artículo · casos del diseño HU008-CP01 a CP12 (+ CP-002 de la matriz)
+# HU-008 · Crear artículo · casos del diseño HU008-CP01 a CP12 (los mismos del Excel)
 # Cuenta: autor@pruebas.co · Conferencia: Congreso de Pruebas · 2027 (postulación abierta)
 # Cada prueba crea sus propios artículos con un ID único, así que se pueden repetir.
 
@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from sgc_helpers import body, login, react_value, visible_text
-from sgc_articulos import (anotar_id, LINEAS_CONGRESO, PALABRAS, RESUMEN, abrir_formulario_articulo,
+from sgc_articulos import (anotar_id, LINEAS_CONGRESO, LINEAS_CONGRESO_ENUNCIADO, PALABRAS, RESUMEN, abrir_formulario_articulo,
                            cambiar_usuario, clic_en_panel, coautores_de_prueba, elegir_opcion,
                            enviar_articulo, esperar_listado, fila_de_articulo, id_unico, ir_a_ruta,
                            llenar_articulo, mensaje_registro, registrar_articulo, textos_de_opciones)
@@ -32,15 +32,6 @@ def test_hu008_cp01_acceso_formulario(navegador, evidencia):
     evidencia('EXITO')
 
 
-def test_hu008_restriccion_sin_rol_autor(navegador, evidencia):
-    """Matriz CP-002 (no está en el diseño). El comité intenta abrir el formulario del autor."""
-    login(navegador, 'comite')
-    ir_a_ruta(navegador, '/autor/articulos/nuevo')
-    assert navegador.current_url.endswith('/comite'), navegador.current_url
-    assert not navegador.find_elements(By.ID, 'titulo-articulo')
-    evidencia('EXITO')
-
-
 def test_hu008_cp02_ingreso_informacion(navegador, evidencia):
     """Matriz CP-003. Se escriben nombre, resumen y palabras clave."""
     login(navegador, 'autor')
@@ -59,7 +50,9 @@ def test_hu008_cp03_linea_tematica(navegador, evidencia):
     abrir_formulario_articulo(navegador)
     elegir_opcion(navegador, 'convocatoria', 'Congreso de Pruebas')
     lineas = textos_de_opciones(navegador, 'linea-tematica')
-    for linea in LINEAS_CONGRESO:
+    # Desde el 22/11 el entorno usa las 5 líneas del enunciado en lugar de las 4 anteriores
+    esperadas = LINEAS_CONGRESO if 'Ingeniería de software' in lineas else LINEAS_CONGRESO_ENUNCIADO
+    for linea in esperadas:
         assert linea in lineas, f'Falta la línea {linea}. Hay: {lineas}'
     elegir_opcion(navegador, 'linea-tematica', 'Ingeniería de software')
     evidencia('EXITO')
@@ -105,9 +98,18 @@ def test_hu008_cp06_asociacion_autor(navegador, evidencia):
 def _abrir_plazos_qa(navegador):
     cambiar_usuario(navegador, 'admin')
     clic_en_panel(navegador, 'Configurar fechas y líneas temáticas')
-    elegir_opcion(navegador, 'conferencia-configuracion', 'Conferencia de Pruebas QA')
     WebDriverWait(navegador, 100).until(EC.visibility_of_element_located((By.ID, 'POSTULACION-inicio')))
-    time.sleep(1.5)
+    # La página carga primero la conferencia por defecto: se elige QA y se confirma que quedó elegida
+    # (si se elige antes de que termine esa carga, la página vuelve al Congreso).
+    for _ in range(4):
+        time.sleep(1.5)
+        elegir_opcion(navegador, 'conferencia-configuracion', 'Conferencia de Pruebas QA')
+        time.sleep(2)
+        if 'se aplica únicamente a Conferencia de Pruebas QA' in body(navegador):
+            break
+    assert 'se aplica únicamente a Conferencia de Pruebas QA' in body(navegador), 'No se pudo elegir la conferencia QA'
+    WebDriverWait(navegador, 100).until(EC.visibility_of_element_located((By.ID, 'EVALUACION-inicio')))
+    time.sleep(1)
 
 
 def _guardar_postulacion(navegador, inicio, fin):

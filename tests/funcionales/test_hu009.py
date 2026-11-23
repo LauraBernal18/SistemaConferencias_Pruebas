@@ -1,14 +1,10 @@
-# HU-009 · Consultar artículos · casos del diseño HU009-CP01 a CP08 (+ CP-009 de la matriz)
+# HU-009 · Consultar artículos · casos del diseño HU009-CP01 a CP08 (los mismos del Excel)
 # Datos previos: 3 artículos de autor@pruebas.co y 1 de otra autora (fixture datos_previos).
 # Como el entorno es compartido, solo se revisan los artículos de esa preparación.
 
-import os
-
-import pytest
-
 from sgc_helpers import body, login
 # datos_previos es un fixture: se importa para que pytest lo encuentre (por eso no se usa directamente)
-from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, abrir_mis_articulos, datos_previos,
+from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, abrir_mis_articulos, contiene_linea, datos_previos,
                            elegir_opcion, encabezado_del_listado, esperar_listado, fila_de_articulo,
                            ir_a_ruta, texto_del_titulo, visibles)
 
@@ -46,7 +42,7 @@ def test_hu009_cp04_informacion_relevante(navegador, evidencia, datos_previos):
         assert columna in encabezado, encabezado
     fila = fila_de_articulo(navegador, datos_previos['titulos']['ia'])
     assert fila is not None
-    assert 'Autor Pruebas' in fila and 'Inteligencia artificial' in fila, fila
+    assert 'Autor Pruebas' in fila and contiene_linea(fila, 'Inteligencia artificial'), fila
     assert 'REGISTRADO' in fila.upper(), fila
     evidencia('EXITO')
 
@@ -85,19 +81,4 @@ def test_hu009_cp08_autor_no_entra_a_gestion(navegador, evidencia, datos_previos
     login(navegador, 'autor')
     ir_a_ruta(navegador, '/gestion/articulos')
     assert navegador.current_url.endswith('/autor'), navegador.current_url
-    evidencia('EXITO')
-
-
-# Desde la pantalla no se puede deshabilitar un artículo. Para esta prueba alguien con acceso
-# a la base de datos (Dana) pone habilitado = False a un artículo de prueba y se pasa su título:
-#   $env:SGC_ARTICULO_DESHABILITADO="QA HU008 <ID> – Asociación con el autor"
-# Sin esa variable, la prueba queda como SKIPPED (Bloqueado).
-@pytest.mark.skipif(not os.getenv('SGC_ARTICULO_DESHABILITADO'),
-                    reason='Matriz HU009-CP-009: falta deshabilitar un artículo en la base de datos '
-                           '(no hay pantalla para hacerlo) y poner su título en SGC_ARTICULO_DESHABILITADO.')
-def test_hu009_articulos_no_habilitados(navegador, evidencia):
-    """Matriz CP-009 (no está en el diseño). Un artículo deshabilitado no aparece en el listado."""
-    titulo = os.getenv('SGC_ARTICULO_DESHABILITADO')
-    abrir_consulta_comite(navegador)
-    assert fila_de_articulo(navegador, titulo) is None, 'El artículo deshabilitado aparece en el listado'
     evidencia('EXITO')

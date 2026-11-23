@@ -4,7 +4,8 @@
 
 from sgc_helpers import body, login
 # datos_previos es un fixture: se importa para que pytest lo encuentre
-from sgc_articulos import abrir_consulta_comite, abrir_mis_articulos, clic_en_panel, datos_previos, esperar_listado
+from sgc_articulos import (abrir_consulta_comite, abrir_mis_articulos, clic_en_panel, contiene_linea,
+                           datos_previos, esperar_listado)
 from sgc_sprint2 import (ERROR_DETALLE, MENSAJE_AJENO, MENSAJE_NO_EXISTE, TITULO_MODAL, abrir_detalle,
                          abrir_detalle_por_url, cerrar_detalle, entrar_como_multirol_autor, id_de_articulo,
                          id_en_la_url, titulo_del_detalle)
@@ -27,7 +28,8 @@ def test_hu011_cp02_informacion_completa(navegador, evidencia, datos_previos):
     abrir_consulta_comite(navegador)
     texto = abrir_detalle(navegador, datos_previos['titulos']['ia'])
     # Algunos rótulos se ven en mayúsculas por el estilo, por eso se compara sin mayúsculas
-    for dato in ('Congreso de Pruebas - 2027', 'Registrado', 'Línea temática', 'Inteligencia artificial',
+    assert contiene_linea(texto, 'Inteligencia artificial'), texto
+    for dato in ('Congreso de Pruebas - 2027', 'Registrado', 'Línea temática',
                  'Fecha de postulación', 'Resumen',
                  'Propuesta de prueba para validar el registro de artículos en el sistema.',
                  'Palabras clave', 'pruebas, selenium, calidad'):
@@ -70,7 +72,7 @@ def test_hu011_cp05_admin_consulta_cualquier_articulo(navegador, evidencia, dato
     esperar_listado(navegador)
     texto = abrir_detalle(navegador, titulo)
     assert titulo_del_detalle(navegador) == titulo
-    assert 'María Fernanda López' in texto and 'Bases de datos' in texto
+    assert 'María Fernanda López' in texto and contiene_linea(texto, 'Bases de datos')
     evidencia('EXITO')
 
 
@@ -80,7 +82,7 @@ def test_hu011_cp06_autor_detalle_propio(navegador, evidencia, datos_previos):
     abrir_mis_articulos(navegador, 'autor')
     texto = abrir_detalle(navegador, titulo)
     assert titulo_del_detalle(navegador) == titulo
-    assert 'Ingeniería de software' in texto and 'Autor Pruebas' in texto
+    assert contiene_linea(texto, 'Ingeniería de software') and 'Autor Pruebas' in texto
     evidencia('EXITO')
 
 
