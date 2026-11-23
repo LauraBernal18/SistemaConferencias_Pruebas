@@ -63,7 +63,7 @@ def cerrar_detalle(driver):
 
 def id_de_articulo(driver, titulo):
     """Abre el detalle como comité para conocer el número del artículo (para las pruebas por URL)."""
-    abrir_consulta_comite(driver)
+    consulta_comite(driver)
     abrir_detalle(driver, titulo)
     return id_en_la_url(driver)
 
@@ -104,11 +104,24 @@ def cuenta_nueva(driver, etiqueta):
     return datos
 
 
+def vaciar(campo):
+    """Borra el contenido del campo con el teclado (así React detecta el cambio).
+    Se repite porque desde el 21/11 los formularios validan al salir de cada campo (onBlur)
+    y ese cambio de pantalla a veces hace que se pierda la selección del primer intento."""
+    for _ in range(4):
+        campo.click()
+        campo.send_keys(Keys.CONTROL, 'a')
+        campo.send_keys(Keys.DELETE)
+        time.sleep(0.3)
+        if not campo.get_attribute('value'):
+            return
+
+
 def escribir(driver, id_campo, texto):
-    """Borra lo que tenga el campo y escribe el texto nuevo (así React detecta el cambio)."""
+    """Borra lo que tenga el campo y escribe el texto nuevo."""
     campo = driver.find_element(By.ID, id_campo)
-    campo.send_keys(Keys.CONTROL, 'a')
-    campo.send_keys(Keys.DELETE)
+    driver.execute_script('arguments[0].scrollIntoView({block: "center"})', campo)
+    vaciar(campo)
     if texto:
         campo.send_keys(texto)
 
@@ -162,62 +175,117 @@ def fila_de_usuario(driver, correo):
 
 
 # ---------------------------------------------------------------------------
-# HU-014 (versiones) y HU-012 (modificar): se abren desde el detalle del artículo
+# HU-012 (modificar) y HU-014 (versiones): se abren con los botones «Editar» y
+# «Gestionar versiones» de cada fila de «Mis artículos» (pantallas integradas el 21/11)
 # ---------------------------------------------------------------------------
 
-import pytest  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 CARPETA_DATOS = Path(__file__).resolve().parents[1] / 'datos'
 
-
-def boton_en_detalle(driver, *textos):
-    """Busca en la ventana del detalle un botón o enlace que contenga alguno de los textos."""
-    modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
-    for texto in textos:
-        encontrados = modal.find_elements(
-            By.XPATH, f'.//button[contains(normalize-space(), "{texto}")] | .//a[contains(normalize-space(), "{texto}")]')
-        if encontrados:
-            return encontrados[0]
-    return None
+# Artículos propios de HU-012 y HU-014. Se crean una vez por ejecución para no cambiar
+# los artículos que comparten HU-009, HU-010, HU-011 y HU-032.
+_articulos_de_esta_corrida = {}
 
 
-def exigir_boton(driver, hu, *textos):
-    """Si la pantalla todavía no existe, la prueba queda como Bloqueada (skip) y no como fallida."""
-    boton = boton_en_detalle(driver, *textos)
-    if boton is None:
-        pytest.skip(f'Bloqueado: el detalle del artículo todavía no tiene la opción de {hu} '
-                    f'(se buscó: {", ".join(textos)}).')
-    return boton
+def articulo_de_prueba(driver, hu):
+    """Registra (solo la primera vez) un artículo de autor@pruebas.co para la HU y devuelve su título."""
+    from sgc_articulos import PALABRAS, RESUMEN, anotar_id, cambiar_usuario, registrar_articulo
+    if hu not in _articulos_de_esta_corrida:
+        identificador = id_unico()
+        titulo = f'QA {hu.replace("-", "")} {identificador} – Artículo para {hu}'
+        cambiar_usuario(driver, 'autor')
+        registrar_articulo(driver, titulo=titulo, resumen=RESUMEN, palabras_clave=PALABRAS,
+                           linea='Ingeniería de software')
+        anotar_id(f'Artículo {hu}', identificador)
+        _articulos_de_esta_corrida[hu] = titulo
+        # Se cierra la sesión para que la prueba empiece desde el inicio de sesión
+        cerrar_sesion(driver)
+    return _articulos_de_esta_corrida[hu]
 
 
-def abrir_carga_version(driver, titulo, quien='autor'):
+def cerrar_sesion(driver):
+    """Borra la sesión guardada en el navegador para poder iniciar sesión otra vez desde el formulario."""
+    try:
+        driver.execute_script('window.sessionStorage.clear(); window.localStorage.clear();')
+    except Exception:
+        pass  # todavía no se ha abierto ninguna página
+
+
+def mis_articulos(driver, quien='autor'):
     from sgc_articulos import abrir_mis_articulos
+    cerrar_sesion(driver)
     abrir_mis_articulos(driver, quien)
-    abrir_detalle(driver, titulo)
-    exigir_boton(driver, 'HU-014', 'Cargar versión', 'Cargar nueva versión', 'Subir versión', 'Cargar PDF').click()
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"]')))
 
 
-def subir_archivo(driver, nombre):
-    driver.find_element(By.CSS_SELECTOR, 'input[type="file"]').send_keys(str(CARPETA_DATOS / nombre))
-    boton = driver.find_element(By.XPATH, '//button[@type="submit"] | //button[contains(normalize-space(), "Cargar")]')
-    boton.click()
-    time.sleep(1.5)
+def consulta_comite(driver):
+    cerrar_sesion(driver)
+    abrir_consulta_comite(driver)
+
+
+def boton_de_fila(driver, aria_label, timeout=30):
+    """Botón (enlace) de una fila de «Mis artículos», buscado por su aria-label."""
+    return WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(
+        (By.CSS_SELECTOR, f'a[aria-label="{aria_label}"]')))
 
 
 def abrir_modificacion(driver, titulo, quien='autor'):
-    from sgc_articulos import abrir_mis_articulos
-    abrir_mis_articulos(driver, quien)
-    abrir_detalle(driver, titulo)
-    exigir_boton(driver, 'HU-012', 'Modificar', 'Editar artículo').click()
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input, textarea')))
+    """«Mis artículos» → «Editar» del artículo → espera el formulario con los datos cargados."""
+    mis_articulos(driver, quien)
+    enlace = boton_de_fila(driver, f'Editar el artículo {titulo}')
+    driver.execute_script('arguments[0].scrollIntoView({block: "center"})', enlace)
+    enlace.click()
+    esperar_formulario_articulo(driver)
+
+
+def esperar_formulario_articulo(driver):
+    WebDriverWait(driver, 60).until(
+        lambda d: d.find_elements(By.ID, 'titulo-articulo')
+        and d.find_element(By.ID, 'titulo-articulo').get_attribute('value'))
     time.sleep(0.5)
+
+
+def abrir_versiones(driver, titulo, quien='autor'):
+    """«Mis artículos» → «Gestionar versiones» del artículo → espera el historial."""
+    mis_articulos(driver, quien)
+    enlace = boton_de_fila(driver, f'Gestionar versiones de {titulo}')
+    driver.execute_script('arguments[0].scrollIntoView({block: "center"})', enlace)
+    enlace.click()
+    esperar_versiones(driver)
+
+
+def esperar_versiones(driver):
+    """Espera la pantalla de versiones (historial cargado) o su mensaje de error."""
+    def cargo(d):
+        texto = body(d)
+        return ('Historial de versiones' in texto and ('versión' in texto.lower())) \
+            or 'Reintentar' in texto or MENSAJE_AJENO in texto
+    WebDriverWait(driver, 60).until(cargo)
+    time.sleep(1)
+
+
+def historial(driver):
+    """Texto de la sección «Historial de versiones»."""
+    return driver.find_element(By.CSS_SELECTOR, 'section[aria-labelledby="titulo-historial"]').text
+
+
+def subir_archivo(driver, nombre, enviar=True):
+    """Elige el archivo en «Archivo PDF de la nueva versión» y, si se pide, pulsa «Cargar nueva versión»."""
+    driver.find_element(By.ID, 'archivo-version').send_keys(str(CARPETA_DATOS / nombre))
+    time.sleep(0.5)
+    if enviar:
+        pulsar_cargar(driver)
+
+
+def pulsar_cargar(driver):
+    boton = driver.find_element(By.XPATH, '//button[@type="submit"][contains(normalize-space(), "Cargar nueva versión")]')
+    driver.execute_script('arguments[0].scrollIntoView({block: "center"})', boton)
+    boton.click()
+    time.sleep(1)
 
 
 def escribir_en(campo, texto):
     """Igual que escribir(), pero recibe el elemento en vez del id."""
-    campo.send_keys(Keys.CONTROL, 'a')
-    campo.send_keys(Keys.DELETE)
+    vaciar(campo)
     if texto:
         campo.send_keys(texto)

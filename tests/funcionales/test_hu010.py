@@ -1,15 +1,12 @@
-# HU-010 · Filtrar artículos · casos del diseño HU010-CP01 a CP09 (+ CP-009 de la matriz)
+# HU-010 · Filtrar artículos · casos del diseño HU010-CP01 a CP09 (los mismos del Excel)
 # Cuenta: comite@pruebas.co → «Consultar artículos». Datos previos: fixture datos_previos.
 
-import os
-
-import pytest
 from selenium.webdriver.common.by import By
 
 from sgc_helpers import body, login
 # datos_previos es un fixture: se importa para que pytest lo encuentre (por eso no se usa directamente)
-from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, clic_en_panel, datos_previos, elegir_opcion,
-                           esperar_listado, fila_de_articulo, filtrar, ir_a_ruta, textos_de_opciones, visibles)
+from sgc_articulos import (SIN_RESULTADOS, abrir_consulta_comite, clic_en_panel, contiene_linea, datos_previos, elegir_opcion,
+                           esperar_listado, filtrar, ir_a_ruta, textos_de_opciones, visibles)
 
 
 def test_hu010_cp01_filtros_disponibles(navegador, evidencia, datos_previos):
@@ -19,7 +16,7 @@ def test_hu010_cp01_filtros_disponibles(navegador, evidencia, datos_previos):
     lineas = textos_de_opciones(navegador, 'filtro-linea')
     for estado in ('Todos los estados', 'Registrado', 'En revisión', 'Aceptado', 'Rechazado'):
         assert estado in estados, estados
-    assert 'Todas las líneas' in lineas and 'Ingeniería de software' in lineas, lineas
+    assert 'Todas las líneas' in lineas and any(contiene_linea(l, 'Ingeniería de software') for l in lineas), lineas
     assert navegador.find_elements(By.XPATH, '//button[contains(., "Limpiar filtros")]')
     evidencia('EXITO')
 
@@ -105,23 +102,4 @@ def test_hu010_cp09_comite_inteligencia_artificial(navegador, evidencia, datos_p
     filtrar(navegador, 'Inteligencia artificial', 'Todos los estados')
     v = visibles(navegador, datos_previos['titulos'])
     assert v == {'ing1': False, 'ing2': False, 'ia': True, 'bd': False}, v
-    evidencia('EXITO')
-
-
-# Desde la pantalla no se puede deshabilitar un artículo. Para esta prueba alguien con acceso
-# a la base de datos (Dana) pone habilitado = False a un artículo de prueba y se pasa su título:
-#   $env:SGC_ARTICULO_DESHABILITADO="QA HU008 <ID> – Asociación con el autor"
-# Sin esa variable, la prueba queda como SKIPPED (Bloqueado).
-@pytest.mark.skipif(not os.getenv('SGC_ARTICULO_DESHABILITADO'),
-                    reason='Matriz HU010-CP-009: falta deshabilitar un artículo en la base de datos '
-                           '(no hay pantalla para hacerlo) y poner su título en SGC_ARTICULO_DESHABILITADO.')
-def test_hu010_articulos_habilitados(navegador, evidencia):
-    """Matriz CP-009 (no está en el diseño). Un artículo deshabilitado no aparece en el listado."""
-    titulo = os.getenv('SGC_ARTICULO_DESHABILITADO')
-    abrir_consulta_comite(navegador)
-    assert fila_de_articulo(navegador, titulo) is None, 'El artículo deshabilitado aparece en el listado'
-    # Aunque se filtre por su línea temática, tampoco debe aparecer
-    elegir_opcion(navegador, 'filtro-linea', 'Ingeniería de software')
-    esperar_listado(navegador)
-    assert fila_de_articulo(navegador, titulo) is None, 'Aparece al filtrar por su línea'
     evidencia('EXITO')

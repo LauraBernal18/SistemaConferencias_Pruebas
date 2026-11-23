@@ -1,13 +1,13 @@
-# HU-032 · Consultar artículos propios · casos del diseño HU032-CP01 a CP09 (+ CP-009 de la matriz)
+# HU-032 · Consultar artículos propios · casos del diseño HU032-CP01 a CP09 (los mismos del Excel)
 # CP05 y CP06 (detalle del artículo) se quitaron: el detalle tiene su propia HU en el Sprint 2.
 # Datos previos: 3 artículos de autor@pruebas.co, 1 de otra autora y una cuenta sin artículos.
 
 import pytest
 
-from sgc_helpers import body, login
+from sgc_helpers import body
 # datos_previos es un fixture: se importa para que pytest lo encuentre (por eso no se usa directamente)
-from sgc_articulos import (abrir_mis_articulos, datos_previos, encabezado_del_listado, fila_de_articulo,
-                           ir_a_ruta, texto_del_titulo, visibles)
+from sgc_articulos import (abrir_mis_articulos, contiene_linea, datos_previos, encabezado_del_listado, fila_de_articulo,
+                           texto_del_titulo, visibles)
 
 
 def test_hu032_cp01_acceso_mis_articulos(navegador, evidencia, datos_previos):
@@ -57,7 +57,8 @@ def test_hu032_cp08_correspondencia(navegador, evidencia, datos_previos):
     abrir_mis_articulos(navegador, 'autor')
     fila = fila_de_articulo(navegador, datos_previos['titulos']['ia'])
     assert fila is not None
-    for texto in ('Inteligencia artificial', 'Carlos Ramírez', 'Ana Torres'):
+    assert contiene_linea(fila, 'Inteligencia artificial'), fila
+    for texto in ('Carlos Ramírez', 'Ana Torres'):
         assert texto in fila, fila
     assert 'REGISTRADO' in fila.upper(), fila
     fecha = navegador.execute_script(
@@ -70,11 +71,3 @@ def test_hu032_cp08_correspondencia(navegador, evidencia, datos_previos):
 @pytest.mark.skip(reason='HU032-CP09: los artículos todavía no tienen documentos adjuntos en este sprint.')
 def test_hu032_cp09_documentos_ajenos():
     pass
-
-
-def test_hu032_restriccion_sin_rol_autor(navegador, evidencia, datos_previos):
-    """Matriz CP-009 (no está en el diseño). El comité intenta abrir «Mis artículos»."""
-    login(navegador, 'comite')
-    ir_a_ruta(navegador, '/autor/articulos')
-    assert navegador.current_url.endswith('/comite'), navegador.current_url
-    evidencia('EXITO')

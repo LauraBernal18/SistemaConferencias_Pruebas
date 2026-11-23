@@ -23,6 +23,9 @@ ARCHIVO_DATOS = ROOT / 'datos_generados.json'
 CONGRESO = 'Congreso de Pruebas · 2027'
 QA = 'Conferencia de Pruebas QA · 2027'
 LINEAS_CONGRESO = ['Inteligencia artificial', 'Ingeniería de software', 'Bases de datos', 'Ciberseguridad']
+# Líneas del enunciado que usa el entorno de pruebas desde el 22/11 (commit 4ce89e8)
+LINEAS_CONGRESO_ENUNCIADO = ['Sistemas Inteligentes', 'Tecnologías en Informática', 'Educación en Informática',
+                             'Sistemas de Software', 'Software en la práctica']
 RESUMEN = 'Propuesta de prueba para validar el registro de artículos en el sistema.'
 PALABRAS = 'pruebas, selenium, calidad'
 SIN_RESULTADOS = 'No se encontraron artículos con esos filtros'
@@ -70,11 +73,33 @@ def clic_en_panel(driver, texto):
     click_text(driver, texto)
 
 
+# El 22/11 el entorno de pruebas cambió a las líneas temáticas del enunciado (commit 4ce89e8, SDGC-195).
+# Las pruebas del Sprint 1 se diseñaron y ejecutaron con las líneas anteriores, así que si la línea
+# pedida ya no existe se usa su equivalente nueva (misma descripción en preparar_entorno_pruebas.py).
+LINEAS_EQUIVALENTES = {
+    'Ingeniería de software': 'Sistemas de Software',
+    'Inteligencia artificial': 'Sistemas Inteligentes',
+    'Bases de datos': 'Tecnologías en Informática',
+}
+
+
+def contiene_linea(texto, linea):
+    """True si el texto muestra la línea temática o su equivalente después del 22/11."""
+    texto = texto.upper()
+    return linea.upper() in texto or LINEAS_EQUIVALENTES.get(linea, linea).upper() in texto
+
+
 def elegir_opcion(driver, id_select, texto_parcial):
-    """Elige en un <select> la opción cuyo texto contiene texto_parcial."""
+    """Elige en un <select> la opción cuyo texto contiene texto_parcial y devuelve el texto elegido."""
     lista = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, id_select)))
-    lista.find_element(By.XPATH, f'.//option[contains(., "{texto_parcial}")]').click()
+    opciones = lista.find_elements(By.XPATH, f'.//option[contains(., "{texto_parcial}")]')
+    if not opciones and texto_parcial in LINEAS_EQUIVALENTES:
+        opciones = lista.find_elements(By.XPATH, f'.//option[contains(., "{LINEAS_EQUIVALENTES[texto_parcial]}")]')
+    if not opciones:
+        raise AssertionError(f'No existe la opción «{texto_parcial}» en {id_select}')
+    opciones[0].click()
     time.sleep(0.8)
+    return opciones[0].text.strip()
 
 
 def textos_de_opciones(driver, id_select):
@@ -163,7 +188,9 @@ def esperar_listado(driver):
     time.sleep(0.8)
 
     def cargo(d):
-        if d.find_elements(By.CSS_SELECTOR, 'span[title]'):
+        # Hasta el 21/11 el título iba en <span title>; desde el commit d771167 (SDGC-192)
+        # va en el enlace «Consultar detalle de …». Se aceptan las dos formas.
+        if d.find_elements(By.CSS_SELECTOR, 'span[title], a[aria-label^="Consultar detalle de "]'):
             return True
         texto = body(d)
         return (SIN_RESULTADOS in texto or 'No hay artículos registrados' in texto
@@ -172,10 +199,15 @@ def esperar_listado(driver):
     WebDriverWait(driver, 90).until(cargo)
 
 
+def xpath_titulo(titulo):
+    """Elemento con el título del artículo en el listado (forma anterior y actual de la interfaz)."""
+    return f'(//span[@title="{titulo}"] | //a[@aria-label="Consultar detalle de {titulo}"])'
+
+
 def fila_de_articulo(driver, titulo):
     """Texto de la fila del artículo, o None si no aparece."""
     filas = driver.find_elements(
-        By.XPATH, f'//span[@title="{titulo}"]/ancestor::div[contains(@class,"grid")][1]')
+        By.XPATH, f'{xpath_titulo(titulo)}/ancestor::div[contains(@class,"grid")][1]')
     if not filas:
         return None
     return re.sub(r'\s+', ' ', filas[0].text)
